@@ -290,3 +290,68 @@ table {
         max-height: calc(100vh - 1rem);
     }
 }
+
+/* Punktualnik / range picker */
+.rp-col {
+    position: relative;
+}
+
+.date-range-input {
+    min-width: 180px;
+    background-color: #fff;
+    cursor: pointer;
+}
+
+.rp {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1050;
+    min-width: 280px;
+    background: #fff;
+}
+
+.rp-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    user-select: none;
+}
+
+.rp-dow {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 4px 0;
+    color: #6c757d;
+}
+
+.rp-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.rp-day:hover {
+    background-color: #e9ecef;
+}
+
+.rp-day.is-out {
+    color: #adb5bd;
+}
+
+.rp-day.is-hover,
+.rp-day.is-inrange {
+    background-color: #dbeafe;
+}
+
+.rp-day.is-start,
+.rp-day.is-end {
+    background-color: #0d6efd;
+    color: #fff;
+    font-weight: 600;
+}
