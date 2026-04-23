@@ -134,8 +134,9 @@ $filters = [
     'dzial' => $dzialFilter,
 ];
 
-$columns = ['datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'];
+$columns = ['foto', 'datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'];
 $labels = [
+    'foto'       => 'Foto',
     'datetime'   => 'Data',
     'kontroler'  => 'Kontroler',
     'wejscie'    => 'Wejście',
@@ -144,7 +145,7 @@ $labels = [
 ];
 
 $sort = strtolower((string)($_GET['sort'] ?? 'datetime'));
-if (!in_array($sort, punktualnik_allowed_sort_columns(), true)) {
+if (!in_array($sort, ['datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'], true)) {
     $sort = 'datetime';
 }
 
@@ -167,37 +168,10 @@ $dzialOptions = [];
 try {
     $pg = db_pgsql($config);
 
-    $kontrolerOptions = punktualnik_fetch_options(
-        $pg,
-        'kontroler',
-        'wartosc',
-        $filters,
-        ['kontroler']
-    );
-
-    $wejscieOptions = punktualnik_fetch_options(
-        $pg,
-        'gdzie',
-        'wartosc',
-        $filters,
-        ['wejscie']
-    );
-
-    $pracownikOptions = punktualnik_fetch_options(
-        $pg,
-        "TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, ''))",
-        'wartosc',
-        $filters,
-        ['pracownik']
-    );
-
-    $dzialOptions = punktualnik_fetch_options(
-        $pg,
-        'dzial',
-        'wartosc',
-        $filters,
-        ['dzial']
-    );
+    $kontrolerOptions = punktualnik_fetch_options($pg, 'kontroler', 'wartosc', $filters, ['kontroler']);
+    $wejscieOptions = punktualnik_fetch_options($pg, 'gdzie', 'wartosc', $filters, ['wejscie']);
+    $pracownikOptions = punktualnik_fetch_options($pg, "TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, ''))", 'wartosc', $filters, ['pracownik']);
+    $dzialOptions = punktualnik_fetch_options($pg, 'dzial', 'wartosc', $filters, ['dzial']);
 
     $orderByMap = [
         'datetime'  => 'datetime',
@@ -213,13 +187,13 @@ try {
     $params = [];
     $sql = "
         SELECT
+            zdjecie,
             datetime,
             kontroler,
             gdzie AS wejscie,
             TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) AS osoba,
             dzial
         FROM kontrolery.event_log
-        WHERE 1=1
     ";
 
     $sql = punktualnik_apply_filters_sql($sql, $params, $filters);
@@ -344,30 +318,50 @@ try {
                     <thead class="table-light">
                     <tr>
                         <?php foreach ($columns as $c): ?>
-                            <?php
-                            $newDir = punktualnik_next_dir($c, $sort, $dir);
-                            $q = punktualnik_build_query($baseParams, [
-                                'page' => 'punktualnik',
-                                'sort' => $c,
-                                'dir' => $newDir
-                            ]);
-                            $ind = punktualnik_sort_indicator($c, $sort, $dir);
-                            ?>
-                            <th>
-                                <a class="text-decoration-none text-reset" href="?<?= e($q) ?>">
-                                    <?= e($labels[$c] ?? $c) ?>
-                                    <?php if ($ind !== ''): ?>
-                                        <span class="ms-1"><?= e($ind) ?></span>
-                                    <?php endif; ?>
-                                </a>
-                            </th>
+                            <?php if ($c === 'foto'): ?>
+                                <th><?= e($labels[$c]) ?></th>
+                            <?php else: ?>
+                                <?php
+                                $newDir = punktualnik_next_dir($c, $sort, $dir);
+                                $q = punktualnik_build_query($baseParams, [
+                                    'page' => 'punktualnik',
+                                    'sort' => $c,
+                                    'dir' => $newDir
+                                ]);
+                                $ind = punktualnik_sort_indicator($c, $sort, $dir);
+                                ?>
+                                <th>
+                                    <a class="text-decoration-none text-reset" href="?<?= e($q) ?>">
+                                        <?= e($labels[$c] ?? $c) ?>
+                                        <?php if ($ind !== ''): ?>
+                                            <span class="ms-1"><?= e($ind) ?></span>
+                                        <?php endif; ?>
+                                    </a>
+                                </th>
+                            <?php endif; ?>
                         <?php endforeach; ?>
                     </tr>
                     </thead>
 
                     <tbody>
                     <?php foreach ($rows as $r): ?>
+
+                        <?php $oid = (int)($r['zdjecie'] ?? 0); ?>
                         <tr>
+                            <td class="text-center">
+                                <?php if ($oid > 0): ?>
+                                    <img
+                                        src="index.php?page=photo&oid=<?= $oid ?>"
+                                        alt=""
+                                        loading="lazy"
+                                        class="punktualnik-photo"
+                                        onerror="this.style.display='none';"
+                                >
+                                <?php endif; ?>
+                            </td>
+
+
+
                             <td><?= e((string)($r['datetime'] ?? '')) ?></td>
                             <td><?= e((string)($r['kontroler'] ?? '')) ?></td>
                             <td><?= e((string)($r['wejscie'] ?? '')) ?></td>
