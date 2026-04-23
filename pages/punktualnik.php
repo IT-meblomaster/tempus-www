@@ -252,7 +252,7 @@ try {
     <div class="card shadow-sm border-0">
         <div class="card-body">
 
-            <form class="row gx-2 gy-2 align-items-end mb-3 flex-nowrap overflow-auto" method="get" action="index.php" id="punktualnikFiltersForm">
+            <form class="row gx-2 gy-2 align-items-end mb-3" method="get" action="index.php" id="punktualnikFiltersForm">
                 <input type="hidden" name="page" value="punktualnik">
 
                 <div class="col-auto rp-col">
