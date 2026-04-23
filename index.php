@@ -39,7 +39,7 @@ $pdo = db($config);
 $page = current_page();
 $pageRecord = page_by_slug($pdo, $page);
 
-if (!$pageRecord || (int) $pageRecord['is_active'] !== 1) {
+if (!$pageRecord || (int)$pageRecord['is_active'] !== 1) {
     http_response_code(404);
     $pageRecord = page_by_slug($pdo, 'forbidden');
 }
@@ -54,7 +54,7 @@ if ($page === 'logout') {
     exit;
 }
 
-if (!can_access_page($pdo, (string) $pageRecord['slug'])) {
+if (!can_access_page($pdo, (string)$pageRecord['slug'])) {
     if (!is_logged_in()) {
         redirect('index.php?page=login');
     }
@@ -67,11 +67,21 @@ if (!can_access_page($pdo, (string) $pageRecord['slug'])) {
     }
 }
 
-$pageFile = __DIR__ . '/' . ltrim((string) $pageRecord['file_path'], '/');
+$pageFile = __DIR__ . '/' . ltrim((string)$pageRecord['file_path'], '/');
 
 if (!is_file($pageFile)) {
     http_response_code(500);
-    exit('Brak pliku strony: ' . e((string) $pageRecord['file_path']));
+    exit('Brak pliku strony: ' . e((string)$pageRecord['file_path']));
+}
+
+/*
+ * Strony typu endpoint (np. zwracające obraz, plik, JSON)
+ * nie powinny renderować layoutu aplikacji.
+ */
+if ((string)$pageRecord['slug'] === 'photo') {
+    require $pageFile;
+    ob_end_flush();
+    exit;
 }
 
 require __DIR__ . '/pages/header.php';
