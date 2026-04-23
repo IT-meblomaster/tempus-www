@@ -54,6 +54,65 @@ if (!function_exists('punktualnik_build_query')) {
     }
 }
 
+if (!function_exists('punktualnik_apply_filters_sql')) {
+    function punktualnik_apply_filters_sql(string $sql, array &$params, array $filters, array $exclude = []): string
+    {
+        if (!in_array('from', $exclude, true) && $filters['from'] !== '') {
+            $sql .= " AND datetime::date >= :from";
+            $params[':from'] = $filters['from'];
+        }
+
+        if (!in_array('to', $exclude, true) && $filters['to'] !== '') {
+            $sql .= " AND datetime::date <= :to";
+            $params[':to'] = $filters['to'];
+        }
+
+        if (!in_array('kontroler', $exclude, true) && $filters['kontroler'] !== '') {
+            $sql .= " AND kontroler = :kontroler";
+            $params[':kontroler'] = $filters['kontroler'];
+        }
+
+        if (!in_array('wejscie', $exclude, true) && $filters['wejscie'] !== '') {
+            $sql .= " AND gdzie = :wejscie";
+            $params[':wejscie'] = $filters['wejscie'];
+        }
+
+        if (!in_array('pracownik', $exclude, true) && $filters['pracownik'] !== '') {
+            $sql .= " AND TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) = :pracownik";
+            $params[':pracownik'] = $filters['pracownik'];
+        }
+
+        if (!in_array('dzial', $exclude, true) && $filters['dzial'] !== '') {
+            $sql .= " AND dzial = :dzial";
+            $params[':dzial'] = $filters['dzial'];
+        }
+
+        return $sql;
+    }
+}
+
+if (!function_exists('punktualnik_fetch_options')) {
+    function punktualnik_fetch_options(PDO $pg, string $selectExpr, string $alias, array $filters, array $exclude = []): array
+    {
+        $params = [];
+        $sql = "
+            SELECT DISTINCT {$selectExpr} AS {$alias}
+            FROM kontrolery.event_log
+            WHERE 1=1
+        ";
+
+        $sql = punktualnik_apply_filters_sql($sql, $params, $filters, $exclude);
+        $sql .= " AND {$selectExpr} IS NOT NULL";
+        $sql .= " AND BTRIM({$selectExpr}) <> ''";
+        $sql .= " ORDER BY {$alias} ASC";
+
+        $stmt = $pg->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+}
+
 $errors = [];
 $rows = [];
 
@@ -65,6 +124,15 @@ $kontrolerFilter = trim((string)($_GET['kontroler'] ?? ''));
 $wejscieFilter = trim((string)($_GET['wejscie'] ?? ''));
 $pracownikFilter = trim((string)($_GET['pracownik'] ?? ''));
 $dzialFilter = trim((string)($_GET['dzial'] ?? ''));
+
+$filters = [
+    'from' => $from,
+    'to' => $to,
+    'kontroler' => $kontrolerFilter,
+    'wejscie' => $wejscieFilter,
+    'pracownik' => $pracownikFilter,
+    'dzial' => $dzialFilter,
+];
 
 $columns = ['datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'];
 $labels = [
@@ -91,7 +159,6 @@ $baseParams = [
     'dzial' => $dzialFilter,
 ];
 
-$totalCount = 0;
 $kontrolerOptions = [];
 $wejscieOptions = [];
 $pracownikOptions = [];
@@ -100,48 +167,50 @@ $dzialOptions = [];
 try {
     $pg = db_pgsql($config);
 
-    $kontrolerOptions = $pg->query("
-        SELECT DISTINCT kontroler
-        FROM kontrolery.event_log
-        WHERE kontroler IS NOT NULL
-          AND BTRIM(kontroler) <> ''
-        ORDER BY kontroler ASC
-    ")->fetchAll(PDO::FETCH_COLUMN);
+    $kontrolerOptions = punktualnik_fetch_options(
+        $pg,
+        'kontroler',
+        'wartosc',
+        $filters,
+        ['kontroler']
+    );
 
-    $wejscieOptions = $pg->query("
-        SELECT DISTINCT gdzie
-        FROM kontrolery.event_log
-        WHERE gdzie IS NOT NULL
-          AND BTRIM(gdzie) <> ''
-        ORDER BY gdzie ASC
-    ")->fetchAll(PDO::FETCH_COLUMN);
+    $wejscieOptions = punktualnik_fetch_options(
+        $pg,
+        'gdzie',
+        'wartosc',
+        $filters,
+        ['wejscie']
+    );
 
-    $pracownikOptions = $pg->query("
-        SELECT DISTINCT TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) AS osoba
-        FROM kontrolery.event_log
-        WHERE TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) <> ''
-        ORDER BY osoba ASC
-    ")->fetchAll(PDO::FETCH_COLUMN);
+    $pracownikOptions = punktualnik_fetch_options(
+        $pg,
+        "TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, ''))",
+        'wartosc',
+        $filters,
+        ['pracownik']
+    );
 
-    $dzialOptions = $pg->query("
-        SELECT DISTINCT dzial
-        FROM kontrolery.event_log
-        WHERE dzial IS NOT NULL
-          AND BTRIM(dzial) <> ''
-        ORDER BY dzial ASC
-    ")->fetchAll(PDO::FETCH_COLUMN);
+    $dzialOptions = punktualnik_fetch_options(
+        $pg,
+        'dzial',
+        'wartosc',
+        $filters,
+        ['dzial']
+    );
 
     $orderByMap = [
         'datetime'  => 'datetime',
         'kontroler' => 'kontroler',
         'wejscie'   => 'wejscie',
-        'osoba'     => 'LOWER(COALESCE(nazwisko, \'\')), LOWER(COALESCE(imie, \'\'))',
+        'osoba'     => "LOWER(COALESCE(nazwisko, '')), LOWER(COALESCE(imie, ''))",
         'dzial'     => 'dzial',
     ];
 
     $orderBy = $orderByMap[$sort] ?? 'datetime';
     $direction = strtoupper($dir) === 'ASC' ? 'ASC' : 'DESC';
 
+    $params = [];
     $sql = "
         SELECT
             datetime,
@@ -150,42 +219,15 @@ try {
             TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) AS osoba,
             dzial
         FROM kontrolery.event_log
-        WHERE datetime::date >= :from
-          AND datetime::date <= :to
+        WHERE 1=1
     ";
 
-    $params = [
-        ':from' => $from,
-        ':to' => $to,
-    ];
-
-    if ($kontrolerFilter !== '') {
-        $sql .= " AND kontroler = :kontroler";
-        $params[':kontroler'] = $kontrolerFilter;
-    }
-
-    if ($wejscieFilter !== '') {
-        $sql .= " AND gdzie = :wejscie";
-        $params[':wejscie'] = $wejscieFilter;
-    }
-
-    if ($pracownikFilter !== '') {
-        $sql .= " AND TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) = :pracownik";
-        $params[':pracownik'] = $pracownikFilter;
-    }
-
-    if ($dzialFilter !== '') {
-        $sql .= " AND dzial = :dzial";
-        $params[':dzial'] = $dzialFilter;
-    }
-
+    $sql = punktualnik_apply_filters_sql($sql, $params, $filters);
     $sql .= " ORDER BY {$orderBy} {$direction}, datetime DESC";
 
     $stmt = $pg->prepare($sql);
     $stmt->execute($params);
-
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $totalCount = count($rows);
 } catch (Throwable $e) {
     $errors[] = $e->getMessage();
 }
@@ -210,101 +252,92 @@ try {
     <div class="card shadow-sm border-0">
         <div class="card-body">
 
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <div class="text-muted">
-                    <span>
-                        Widocznych: <strong id="visibleCount"><?= count($rows) ?></strong> / <?= $totalCount ?>
-                    </span>
-                </div>
+            <form class="row gx-2 gy-2 align-items-end mb-3 flex-nowrap overflow-auto" method="get" action="index.php" id="punktualnikFiltersForm">
+                <input type="hidden" name="page" value="punktualnik">
 
-                <div>
-                    <a class="btn btn-outline-secondary btn-sm" href="index.php?page=punktualnik">Reset</a>
-                </div>
-            </div>
+                <div class="col-auto rp-col">
+                    <label class="form-label mb-1">Zakres dat</label>
 
-            <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
-                <form class="row g-2 align-items-end m-0" method="get" action="index.php" id="punktualnikFiltersForm">
-                    <input type="hidden" name="page" value="punktualnik">
+                    <input
+                        class="form-control form-control-sm date-range-input"
+                        id="dateRangeInput"
+                        type="text"
+                        readonly
+                        placeholder="Wybierz zakres…"
+                    >
 
-                    <div class="col-auto rp-col">
-                        <label class="form-label mb-1">Zakres dat</label>
+                    <input type="hidden" name="from" id="fromHidden" value="<?= e($from) ?>">
+                    <input type="hidden" name="to" id="toHidden" value="<?= e($to) ?>">
 
-                        <input
-                            class="form-control form-control-sm date-range-input"
-                            id="dateRangeInput"
-                            type="text"
-                            readonly
-                            placeholder="Wybierz zakres…"
-                        >
-
-                        <input type="hidden" name="from" id="fromHidden" value="<?= e($from) ?>">
-                        <input type="hidden" name="to" id="toHidden" value="<?= e($to) ?>">
-
-                        <div id="rangePicker" class="rp card mt-2" style="display:none;">
-                            <div class="card-body p-2">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="rpPrev">&lt;</button>
-                                    <div class="fw-semibold" id="rpTitle"></div>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="rpNext">&gt;</button>
-                                </div>
-                                <div class="rp-grid" id="rpGrid"></div>
-                                <div class="d-flex gap-2 mt-2">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="rpClear">Wyczyść</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="rpClose">Zamknij</button>
-                                </div>
+                    <div id="rangePicker" class="rp card mt-2" style="display:none;">
+                        <div class="card-body p-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="rpPrev">&lt;</button>
+                                <div class="fw-semibold" id="rpTitle"></div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="rpNext">&gt;</button>
+                            </div>
+                            <div class="rp-grid" id="rpGrid"></div>
+                            <div class="d-flex gap-2 mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="rpClear">Wyczyść</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="rpClose">Zamknij</button>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="col-auto">
-                        <label class="form-label mb-1">Kontroler</label>
-                        <select name="kontroler" class="form-select form-select-sm punktualnik-autosubmit">
-                            <option value="">Wszystkie</option>
-                            <?php foreach ($kontrolerOptions as $opt): ?>
-                                <option value="<?= e((string)$opt) ?>" <?= $kontrolerFilter === (string)$opt ? 'selected' : '' ?>>
-                                    <?= e((string)$opt) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1">Kontroler</label>
+                    <select name="kontroler" class="form-select form-select-sm punktualnik-autosubmit">
+                        <option value="">Wszystkie</option>
+                        <?php foreach ($kontrolerOptions as $opt): ?>
+                            <option value="<?= e((string)$opt) ?>" <?= $kontrolerFilter === (string)$opt ? 'selected' : '' ?>>
+                                <?= e((string)$opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                    <div class="col-auto">
-                        <label class="form-label mb-1">Wejście</label>
-                        <select name="wejscie" class="form-select form-select-sm punktualnik-autosubmit">
-                            <option value="">Wszystkie</option>
-                            <?php foreach ($wejscieOptions as $opt): ?>
-                                <option value="<?= e((string)$opt) ?>" <?= $wejscieFilter === (string)$opt ? 'selected' : '' ?>>
-                                    <?= e((string)$opt) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1">Wejście</label>
+                    <select name="wejscie" class="form-select form-select-sm punktualnik-autosubmit">
+                        <option value="">Wszystkie</option>
+                        <?php foreach ($wejscieOptions as $opt): ?>
+                            <option value="<?= e((string)$opt) ?>" <?= $wejscieFilter === (string)$opt ? 'selected' : '' ?>>
+                                <?= e((string)$opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                    <div class="col-auto">
-                        <label class="form-label mb-1">Pracownik</label>
-                        <select name="pracownik" class="form-select form-select-sm punktualnik-autosubmit">
-                            <option value="">Wszyscy</option>
-                            <?php foreach ($pracownikOptions as $opt): ?>
-                                <option value="<?= e((string)$opt) ?>" <?= $pracownikFilter === (string)$opt ? 'selected' : '' ?>>
-                                    <?= e((string)$opt) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1">Pracownik</label>
+                    <select name="pracownik" class="form-select form-select-sm punktualnik-autosubmit">
+                        <option value="">Wszyscy</option>
+                        <?php foreach ($pracownikOptions as $opt): ?>
+                            <option value="<?= e((string)$opt) ?>" <?= $pracownikFilter === (string)$opt ? 'selected' : '' ?>>
+                                <?= e((string)$opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                    <div class="col-auto">
-                        <label class="form-label mb-1">Dział</label>
-                        <select name="dzial" class="form-select form-select-sm punktualnik-autosubmit">
-                            <option value="">Wszystkie</option>
-                            <?php foreach ($dzialOptions as $opt): ?>
-                                <option value="<?= e((string)$opt) ?>" <?= $dzialFilter === (string)$opt ? 'selected' : '' ?>>
-                                    <?= e((string)$opt) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </form>
-            </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1">Dział</label>
+                    <select name="dzial" class="form-select form-select-sm punktualnik-autosubmit">
+                        <option value="">Wszystkie</option>
+                        <?php foreach ($dzialOptions as $opt): ?>
+                            <option value="<?= e((string)$opt) ?>" <?= $dzialFilter === (string)$opt ? 'selected' : '' ?>>
+                                <?= e((string)$opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="col-auto">
+                    <label class="form-label mb-1 d-block">&nbsp;</label>
+                    <a class="btn btn-outline-secondary btn-sm" href="index.php?page=punktualnik">Reset</a>
+                </div>
+            </form>
 
             <div class="table-responsive">
                 <table class="table table-bordered table-striped table-hover align-middle" id="punktualnikTable">
