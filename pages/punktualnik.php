@@ -223,7 +223,7 @@ try {
             </div>
 
             <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
-                <form class="row g-2 align-items-end m-0" method="get" action="index.php">
+                <form class="row g-2 align-items-end m-0" method="get" action="index.php" id="punktualnikFiltersForm">
                     <input type="hidden" name="page" value="punktualnik">
 
                     <div class="col-auto rp-col">
@@ -258,7 +258,7 @@ try {
 
                     <div class="col-auto">
                         <label class="form-label mb-1">Kontroler</label>
-                        <select name="kontroler" class="form-select form-select-sm">
+                        <select name="kontroler" class="form-select form-select-sm punktualnik-autosubmit">
                             <option value="">Wszystkie</option>
                             <?php foreach ($kontrolerOptions as $opt): ?>
                                 <option value="<?= e((string)$opt) ?>" <?= $kontrolerFilter === (string)$opt ? 'selected' : '' ?>>
@@ -270,7 +270,7 @@ try {
 
                     <div class="col-auto">
                         <label class="form-label mb-1">Wejście</label>
-                        <select name="wejscie" class="form-select form-select-sm">
+                        <select name="wejscie" class="form-select form-select-sm punktualnik-autosubmit">
                             <option value="">Wszystkie</option>
                             <?php foreach ($wejscieOptions as $opt): ?>
                                 <option value="<?= e((string)$opt) ?>" <?= $wejscieFilter === (string)$opt ? 'selected' : '' ?>>
@@ -282,7 +282,7 @@ try {
 
                     <div class="col-auto">
                         <label class="form-label mb-1">Pracownik</label>
-                        <select name="pracownik" class="form-select form-select-sm">
+                        <select name="pracownik" class="form-select form-select-sm punktualnik-autosubmit">
                             <option value="">Wszyscy</option>
                             <?php foreach ($pracownikOptions as $opt): ?>
                                 <option value="<?= e((string)$opt) ?>" <?= $pracownikFilter === (string)$opt ? 'selected' : '' ?>>
@@ -294,7 +294,7 @@ try {
 
                     <div class="col-auto">
                         <label class="form-label mb-1">Dział</label>
-                        <select name="dzial" class="form-select form-select-sm">
+                        <select name="dzial" class="form-select form-select-sm punktualnik-autosubmit">
                             <option value="">Wszystkie</option>
                             <?php foreach ($dzialOptions as $opt): ?>
                                 <option value="<?= e((string)$opt) ?>" <?= $dzialFilter === (string)$opt ? 'selected' : '' ?>>
@@ -302,11 +302,6 @@ try {
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                    </div>
-
-                    <div class="col-auto">
-                        <button class="btn btn-sm btn-outline-secondary">Filtruj</button>
-                        <a class="btn btn-sm btn-outline-secondary" href="index.php?page=punktualnik">Reset</a>
                     </div>
                 </form>
             </div>
@@ -355,5 +350,39 @@ try {
     </div>
 
     <script src="assets/js/punktualnik.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('punktualnikFiltersForm');
+        if (!form) return;
+
+        const autosubmitFields = form.querySelectorAll('.punktualnik-autosubmit');
+        autosubmitFields.forEach(function (field) {
+            field.addEventListener('change', function () {
+                form.submit();
+            });
+        });
+
+        const fromHidden = document.getElementById('fromHidden');
+        const toHidden = document.getElementById('toHidden');
+        const rpGrid = document.getElementById('rpGrid');
+
+        if (rpGrid && fromHidden && toHidden) {
+            let lastFrom = fromHidden.value;
+            let lastTo = toHidden.value;
+
+            const observer = new MutationObserver(function () {
+                if (fromHidden.value !== lastFrom || toHidden.value !== lastTo) {
+                    if (fromHidden.value !== '' && toHidden.value !== '') {
+                        lastFrom = fromHidden.value;
+                        lastTo = toHidden.value;
+                        form.submit();
+                    }
+                }
+            });
+
+            observer.observe(rpGrid, { childList: true, subtree: true });
+        }
+    });
+    </script>
 
 <?php endif; ?>
