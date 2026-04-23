@@ -1,0 +1,10 @@
+/vendor/
+/node_modules/
+/.env
+/.env.local
+/var/logs/*
+!/var/logs/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
+/config/config.php
