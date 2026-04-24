@@ -78,7 +78,8 @@ if (!is_file($pageFile)) {
  * Strony typu endpoint (np. zwracające obraz, plik, JSON)
  * nie powinny renderować layoutu aplikacji.
  */
-if ((string)$pageRecord['slug'] === 'photo') {
+
+if (in_array((string)$pageRecord['slug'], ['photo', 'monitor_data'], true)) {
     require $pageFile;
     ob_end_flush();
     exit;
