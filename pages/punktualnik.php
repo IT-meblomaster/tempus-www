@@ -58,32 +58,32 @@ if (!function_exists('punktualnik_apply_filters_sql')) {
     function punktualnik_apply_filters_sql(string $sql, array &$params, array $filters, array $exclude = []): string
     {
         if (!in_array('from', $exclude, true) && $filters['from'] !== '') {
-            $sql .= " AND datetime::date >= :from";
+            $sql .= " AND data_zdarzenia::date >= :from";
             $params[':from'] = $filters['from'];
         }
 
         if (!in_array('to', $exclude, true) && $filters['to'] !== '') {
-            $sql .= " AND datetime::date <= :to";
+            $sql .= " AND data_zdarzenia::date <= :to";
             $params[':to'] = $filters['to'];
         }
 
         if (!in_array('kontroler', $exclude, true) && $filters['kontroler'] !== '') {
-            $sql .= " AND kontroler = :kontroler";
+            $sql .= " AND nazwa_kontrolera = :kontroler";
             $params[':kontroler'] = $filters['kontroler'];
         }
 
         if (!in_array('wejscie', $exclude, true) && $filters['wejscie'] !== '') {
-            $sql .= " AND gdzie = :wejscie";
+            $sql .= " AND nazwa_przejscia = :wejscie";
             $params[':wejscie'] = $filters['wejscie'];
         }
 
         if (!in_array('pracownik', $exclude, true) && $filters['pracownik'] !== '') {
-            $sql .= " AND TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) = :pracownik";
+            $sql .= " AND TRIM(pracownik) = :pracownik";
             $params[':pracownik'] = $filters['pracownik'];
         }
 
         if (!in_array('dzial', $exclude, true) && $filters['dzial'] !== '') {
-            $sql .= " AND dzial = :dzial";
+            $sql .= " AND nazwa_dzialu = :dzial";
             $params[':dzial'] = $filters['dzial'];
         }
 
@@ -97,7 +97,7 @@ if (!function_exists('punktualnik_fetch_options')) {
         $params = [];
         $sql = "
             SELECT DISTINCT {$selectExpr} AS {$alias}
-            FROM kontrolery.event_log
+            FROM monitoring.monitoring_log
             WHERE 1=1
         ";
 
@@ -121,83 +121,111 @@ $from = (string)($_GET['from'] ?? '2026-04-01');
 $to = (string)($_GET['to'] ?? $today->format('Y-m-d'));
 
 $kontrolerFilter = trim((string)($_GET['kontroler'] ?? ''));
-$wejscieFilter = trim((string)($_GET['wejscie'] ?? ''));
+$wejscieFilter   = trim((string)($_GET['wejscie'] ?? ''));
 $pracownikFilter = trim((string)($_GET['pracownik'] ?? ''));
-$dzialFilter = trim((string)($_GET['dzial'] ?? ''));
+$dzialFilter     = trim((string)($_GET['dzial'] ?? ''));
 
 $filters = [
-    'from' => $from,
-    'to' => $to,
+    'from'      => $from,
+    'to'        => $to,
     'kontroler' => $kontrolerFilter,
-    'wejscie' => $wejscieFilter,
+    'wejscie'   => $wejscieFilter,
     'pracownik' => $pracownikFilter,
-    'dzial' => $dzialFilter,
+    'dzial'     => $dzialFilter,
 ];
 
 $columns = ['foto', 'datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'];
 $labels = [
-    'foto'       => 'Foto',
-    'datetime'   => 'Data',
-    'kontroler'  => 'Kontroler',
-    'wejscie'    => 'Wejście',
-    'osoba'      => 'Nazwisko Imię',
-    'dzial'      => 'Dział',
+    'foto'      => 'Foto',
+    'datetime'  => 'Data',
+    'kontroler' => 'Kontroler',
+    'wejscie'   => 'Wejście',
+    'osoba'     => 'Nazwisko Imię',
+    'dzial'     => 'Dział',
 ];
 
 $sort = strtolower((string)($_GET['sort'] ?? 'datetime'));
-if (!in_array($sort, ['datetime', 'kontroler', 'wejscie', 'osoba', 'dzial'], true)) {
+if (!in_array($sort, punktualnik_allowed_sort_columns(), true)) {
     $sort = 'datetime';
 }
 
 $dir = punktualnik_normalize_dir($_GET['dir'] ?? 'desc');
 
 $baseParams = [
-    'from' => $from,
-    'to' => $to,
+    'from'      => $from,
+    'to'        => $to,
     'kontroler' => $kontrolerFilter,
-    'wejscie' => $wejscieFilter,
+    'wejscie'   => $wejscieFilter,
     'pracownik' => $pracownikFilter,
-    'dzial' => $dzialFilter,
+    'dzial'     => $dzialFilter,
 ];
 
 $kontrolerOptions = [];
-$wejscieOptions = [];
+$wejscieOptions   = [];
 $pracownikOptions = [];
-$dzialOptions = [];
+$dzialOptions     = [];
 
 try {
     $pg = db_pgsql($config);
 
-    $kontrolerOptions = punktualnik_fetch_options($pg, 'kontroler', 'wartosc', $filters, ['kontroler']);
-    $wejscieOptions = punktualnik_fetch_options($pg, 'gdzie', 'wartosc', $filters, ['wejscie']);
-    $pracownikOptions = punktualnik_fetch_options($pg, "TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, ''))", 'wartosc', $filters, ['pracownik']);
-    $dzialOptions = punktualnik_fetch_options($pg, 'dzial', 'wartosc', $filters, ['dzial']);
+    $kontrolerOptions = punktualnik_fetch_options(
+        $pg,
+        'nazwa_kontrolera',
+        'wartosc',
+        $filters,
+        ['kontroler']
+    );
+
+    $wejscieOptions = punktualnik_fetch_options(
+        $pg,
+        'nazwa_przejscia',
+        'wartosc',
+        $filters,
+        ['wejscie']
+    );
+
+    $pracownikOptions = punktualnik_fetch_options(
+        $pg,
+        'TRIM(pracownik)',
+        'wartosc',
+        $filters,
+        ['pracownik']
+    );
+
+    $dzialOptions = punktualnik_fetch_options(
+        $pg,
+        'nazwa_dzialu',
+        'wartosc',
+        $filters,
+        ['dzial']
+    );
 
     $orderByMap = [
-        'datetime'  => 'datetime',
-        'kontroler' => 'kontroler',
-        'wejscie'   => 'wejscie',
-        'osoba'     => "LOWER(COALESCE(nazwisko, '')), LOWER(COALESCE(imie, ''))",
-        'dzial'     => 'dzial',
+        'datetime'  => 'data_zdarzenia',
+        'kontroler' => 'nazwa_kontrolera',
+        'wejscie'   => 'nazwa_przejscia',
+        'osoba'     => 'LOWER(pracownik)',
+        'dzial'     => 'nazwa_dzialu',
     ];
 
-    $orderBy = $orderByMap[$sort] ?? 'datetime';
+    $orderBy   = $orderByMap[$sort] ?? 'data_zdarzenia';
     $direction = strtoupper($dir) === 'ASC' ? 'ASC' : 'DESC';
 
     $params = [];
     $sql = "
         SELECT
             zdjecie,
-            datetime,
-            kontroler,
-            gdzie AS wejscie,
-            TRIM(COALESCE(nazwisko, '') || ' ' || COALESCE(imie, '')) AS osoba,
-            dzial
-        FROM kontrolery.event_log
+            data_zdarzenia AS datetime,
+            nazwa_kontrolera AS kontroler,
+            nazwa_przejscia AS wejscie,
+            pracownik AS osoba,
+            nazwa_dzialu AS dzial
+        FROM monitoring.monitoring_log
+        WHERE 1=1
     ";
 
     $sql = punktualnik_apply_filters_sql($sql, $params, $filters);
-    $sql .= " ORDER BY {$orderBy} {$direction}, datetime DESC";
+    $sql .= " ORDER BY {$orderBy} {$direction}, data_zdarzenia DESC";
 
     $stmt = $pg->prepare($sql);
     $stmt->execute($params);
@@ -209,7 +237,7 @@ try {
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="h3 mb-1">Punktualnik</h1>
+        <h1 class="h3 mb-1">Punktualnik &nbsp;<small class="text-muted fw-normal"><?= (new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw')))->format('H:i:s') ?></small></h1>
     </div>
 </div>
 
@@ -326,7 +354,7 @@ try {
                                 $q = punktualnik_build_query($baseParams, [
                                     'page' => 'punktualnik',
                                     'sort' => $c,
-                                    'dir' => $newDir
+                                    'dir'  => $newDir
                                 ]);
                                 $ind = punktualnik_sort_indicator($c, $sort, $dir);
                                 ?>
@@ -345,7 +373,6 @@ try {
 
                     <tbody>
                     <?php foreach ($rows as $r): ?>
-
                         <?php $oid = (int)($r['zdjecie'] ?? 0); ?>
                         <tr>
                             <td class="text-center">
@@ -356,12 +383,9 @@ try {
                                         loading="lazy"
                                         class="punktualnik-photo"
                                         onerror="this.style.display='none';"
-                                >
+                                    >
                                 <?php endif; ?>
                             </td>
-
-
-
                             <td><?= e((string)($r['datetime'] ?? '')) ?></td>
                             <td><?= e((string)($r['kontroler'] ?? '')) ?></td>
                             <td><?= e((string)($r['wejscie'] ?? '')) ?></td>
