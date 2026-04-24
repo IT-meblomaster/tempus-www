@@ -41,7 +41,8 @@
         return [
             row.data_zdarzenia || '',
             row.pracownik || '',
-            row.nazwa_przejscia || ''
+            row.nazwa_przejscia || '',
+            row.zdjecie || ''
         ].join('|');
     }
 
@@ -87,6 +88,7 @@
     function buildCard(row, isNew) {
         const card = document.createElement('div');
         card.className = 'monitor-card' + (row ? '' : ' monitor-card-empty') + (isNew ? ' monitor-card-new' : '');
+        card.dataset.key = row ? rowKey(row) : '';
 
         if (!row) {
             card.innerHTML = `
@@ -114,16 +116,46 @@
         return card;
     }
 
+    function arraysEqual(a, b) {
+        if (a.length !== b.length) {
+            return false;
+        }
+
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     function renderGrid(rows) {
         const cleanRows = Array.isArray(rows) ? rows.slice(0, CARD_COUNT) : [];
         const newKeys = cleanRows.map(rowKey);
+
+        while (newKeys.length < CARD_COUNT) {
+            newKeys.push('');
+        }
+
+        if (arraysEqual(newKeys, lastKeys)) {
+            return;
+        }
+
+        const currentCards = Array.from(grid.children);
         const cards = [];
 
         for (let i = 0; i < CARD_COUNT; i++) {
             const row = cleanRows[i] || null;
             const key = row ? rowKey(row) : '';
-            const isNew = row && !lastKeys.includes(key);
+            const oldCard = currentCards[i] || null;
 
+            if (oldCard && oldCard.dataset.key === key) {
+                cards.push(oldCard);
+                continue;
+            }
+
+            const isNew = row && !lastKeys.includes(key);
             cards.push(buildCard(row, isNew));
         }
 
